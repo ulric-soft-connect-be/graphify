@@ -45,7 +45,10 @@ from graphify.extractors.dart import extract_dart  # noqa: F401
 from graphify.extractors.dm import extract_dm, extract_dmf, extract_dmi, extract_dmm  # noqa: F401
 from graphify.extractors.elixir import extract_elixir  # noqa: F401
 from graphify.extractors.fortran import _cpp_preprocess, extract_fortran  # noqa: F401
+from graphify.extractors.gdscript import extract_gdscript  # noqa: F401
+from graphify.extractors.gdshader import extract_gdshader  # noqa: F401
 from graphify.extractors.go import _GO_PREDECLARED_FUNCS, extract_go  # noqa: F401
+from graphify.extractors.godot_resource import extract_godot_resource  # noqa: F401
 from graphify.extractors.json_config import extract_json  # noqa: F401
 from graphify.extractors.commonlisp import extract_commonlisp  # noqa: F401
 from graphify.extractors.markdown import extract_markdown, _MD_LINK_INDEX_CACHE  # noqa: F401
@@ -2672,6 +2675,8 @@ _LANG_FAMILY_BY_EXT: dict[str, str] = {
     ".metal": "native", ".m": "native", ".mm": "native", ".swift": "native",
     # Single-language families
     ".py": "python",
+    ".gd": "gdscript",
+    ".gdshader": "gdshader", ".gdshaderinc": "gdshader",
     ".go": "go",
     ".rs": "rust",
     ".rb": "ruby", ".rake": "ruby",
@@ -5816,6 +5821,11 @@ def extract_xaml(path: Path) -> dict:
 
 _DISPATCH: dict[str, Any] = {
     ".py": extract_python,
+    ".gd": extract_gdscript,
+    ".gdshader": extract_gdshader,
+    ".gdshaderinc": extract_gdshader,
+    ".tscn": extract_godot_resource,
+    ".tres": extract_godot_resource,
     ".js": extract_js,
     ".jsx": extract_js,
     ".mjs": extract_js,
