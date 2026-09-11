@@ -1,0 +1,6 @@
+; Engine configuration file. Present so res:// resolves to this directory.
+config_version=5
+
+[application]
+
+config/name="graphify gdscript fixture"
