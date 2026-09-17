@@ -56,6 +56,28 @@ Four decisions carry the result:
 Tests: `tests/test_gdscript.py`, `tests/test_godot_shader_scene.py`,
 `tests/test_godot_project.py`, fixture Godot project under `tests/fixtures/godot/`.
 
+Measured on a 23-project Godot corpus (9593 nodes, 16861 edges): its 24
+`[connection]` sections produce 19 edges, and the five that produce none are
+accounted for — three are duplicates (one handler, one signal, several emitters,
+collapsed on purpose) and two point at a built-in method on a node carrying no
+script. Alongside them, 15 autoloads and 9 `run/main_scene` entry points, none of
+which any file in those projects references by path.
+
+## A scene and its script sharing a name lose their edge
+
+Godot's own idiom — `player.tscn` beside `player.gd` — costs the pair its link.
+graphify derives a node id from the file path with the extension dropped, so two
+files that differ only by extension collapse onto one id, and `build_from_json`
+then drops the edges between them as self-edges. The scene keeps every other
+`[ext_resource]` edge and loses exactly the one naming the script that drives it,
+along with any `[connection]` edge into that script's methods.
+
+This predates the fork: a graph built before these extractors carries the same
+composite id and the same missing edge. It lives in the id-remap post-pass, not
+in the Godot extractors, and it is not Godot-specific — `foo.ts` beside `foo.tsx`
+collides the same way — so fixing it is a separate contribution. On the corpus
+above, 19 scene/script pairs are affected.
+
 ## Updating from upstream
 
 The fork is shaped so this stays cheap: 1329 lines live in files that do not exist
