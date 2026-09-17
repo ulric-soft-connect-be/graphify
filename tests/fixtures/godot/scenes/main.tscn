@@ -7,3 +7,17 @@
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_abcde")
+
+[node name="Button" type="Button" parent="."]
+
+[node name="Data" type="Node" parent="."]
+metadata/grid = [
+[1, 2],
+[3, 4]
+]
+script = ExtResource("1_abcde")
+
+[connection signal="pressed" from="Button" to="." method="_on_button_pressed"]
+[connection signal="ready" from="Button" to="Button" method="_on_button_ready"]
+[connection signal="timeout" from="Timer" to="." method="_on_never_defined"]
+[connection signal="renamed" from="Data" to="Data" method="_on_data_renamed"]

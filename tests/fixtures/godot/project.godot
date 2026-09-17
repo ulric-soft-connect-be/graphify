@@ -4,3 +4,11 @@ config_version=5
 [application]
 
 config/name="graphify gdscript fixture"
+run/main_scene="res://scenes/main.tscn"
+config/icon="res://icon_does_not_exist.svg"
+
+[autoload]
+
+FixtureSingleton="*res://scripts/base.gd"
+Disabled="res://scripts/player.gd"
+Ghost="*res://scripts/does_not_exist.gd"

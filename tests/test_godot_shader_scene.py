@@ -111,3 +111,65 @@ def test_godot_suffixes_are_dispatched_and_classified_as_code():
     assert _DISPATCH[".tres"] is extract_godot_resource
     for ext in (".gdshader", ".gdshaderinc", ".tscn", ".tres"):
         assert ext in CODE_EXTENSIONS
+
+
+# ── Signal connections ────────────────────────────────────────────────────────
+
+LEGACY_SCENE = GODOT / "scenes" / "legacy.tscn"
+
+
+def _calls(r):
+    by_id = {n["id"]: n for n in r["nodes"]}
+    return {(by_id[e["target"]]["label"], e.get("context"))
+            for e in r["edges"] if e["relation"] == "calls"}
+
+
+def test_scene_connection_links_the_scene_to_its_handler():
+    """The scene file is the only place naming `_on_button_pressed`; without this
+    edge every editor-wired handler in a Godot project reads as dead code."""
+    assert ("_on_button_pressed()", "signal:pressed") in _calls(extract_godot_resource(SCENE))
+
+
+def test_scene_connection_resolves_the_node_path_to_its_script():
+    """`to="Data"` is a child node, and its script is set in the property block
+    below its own [node] header — not in the header, and not the root's."""
+    assert ("_on_data_renamed()", "signal:renamed") in _calls(extract_godot_resource(SCENE))
+
+
+def test_scene_connection_survives_a_property_wrapping_onto_a_header_shaped_line():
+    """`metadata/grid` wraps onto a line reading `[3, 4]`. Read as a section
+    header, it would detach the `script =` line that follows from its node."""
+    labels = _labels(extract_godot_resource(SCENE))
+    assert "_on_data_renamed()" in labels
+
+
+def test_scene_connection_to_a_node_without_a_script_is_dropped():
+    """Nothing in this file says which script defines the handler, and guessing
+    the root's would attribute a method to a file that never declares it."""
+    assert not any("_on_button_ready" in l for l in _labels(extract_godot_resource(SCENE)))
+
+
+def test_scene_connection_to_a_method_the_script_does_not_define_is_dropped():
+    """Inherited from a base script, or simply stale: either way this file cannot
+    name the node id, and a node invented here would claim the wrong source."""
+    assert not any("_on_never_defined" in l for l in _labels(extract_godot_resource(SCENE)))
+
+
+def test_legacy_scene_connection_resolves():
+    """Godot 3 writes bare ids (`id=1`, `ExtResource( 1 )`), so the header parser
+    has to read unquoted attribute values to tie a node to its script."""
+    assert ("_on_button_pressed()", "signal:pressed") in _calls(extract_godot_resource(LEGACY_SCENE))
+
+
+def test_handler_node_id_is_the_one_the_gdscript_extractor_gives_the_method():
+    """The point of the edge is that it lands on the method's real node. A
+    different id would add a second, parallel `_on_button_pressed()`."""
+    import importlib.util as _ilu
+    if _ilu.find_spec("tree_sitter_gdscript") is None:
+        import pytest
+        pytest.skip("tree-sitter-gdscript not installed")
+    from graphify.extract import extract_gdscript
+    declared = extract_gdscript(GODOT / "scripts" / "player.gd")
+    declared_id = next(n["id"] for n in declared["nodes"] if n["label"] == "_on_button_pressed()")
+    r = extract_godot_resource(SCENE)
+    assert declared_id in {e["target"] for e in r["edges"] if e["relation"] == "calls"}

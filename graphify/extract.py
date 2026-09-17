@@ -51,6 +51,7 @@ from graphify.extractors.fortran import _cpp_preprocess, extract_fortran  # noqa
 from graphify.extractors.gdscript import extract_gdscript  # noqa: F401
 from graphify.extractors.gdshader import extract_gdshader  # noqa: F401
 from graphify.extractors.go import _GO_PREDECLARED_FUNCS, extract_go  # noqa: F401
+from graphify.extractors.godot_project import extract_godot_project  # noqa: F401
 from graphify.extractors.godot_resource import extract_godot_resource  # noqa: F401
 from graphify.extractors.json_config import extract_json  # noqa: F401
 from graphify.extractors.commonlisp import extract_commonlisp  # noqa: F401
@@ -6703,6 +6704,7 @@ _DISPATCH: dict[str, Any] = {
     ".gdshaderinc": extract_gdshader,
     ".tscn": extract_godot_resource,
     ".tres": extract_godot_resource,
+    ".godot": extract_godot_project,
     ".js": extract_js,
     ".jsx": extract_js,
     ".mjs": extract_js,

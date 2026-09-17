@@ -27,10 +27,11 @@ with N covering the project's `.gd` files, not a handful.
 |---|---|
 | `graphify/extractors/gdscript.py` | `.gd` — tree-sitter. Classes, inner classes, functions, signals, `extends` (an `inherits` edge), `preload`/`load` and bare `"res://…"` paths (`imports_from`), same-file calls. |
 | `graphify/extractors/gdshader.py` | `.gdshader`, `.gdshaderinc` — regex. `#include` edges and function definitions. |
-| `graphify/extractors/godot_resource.py` | `.tscn`, `.tres` — regex. `[ext_resource]` edges: which script drives which scene. |
-| `graphify/extractors/godot_paths.py` | `res://` resolution, shared by the three. |
+| `graphify/extractors/godot_resource.py` | `.tscn`, `.tres` — regex. `[ext_resource]` edges: which script drives which scene, which sub-scene it instances. `[connection]` edges: the handler an editor-wired signal calls. |
+| `graphify/extractors/godot_project.py` | `project.godot` — regex. `[autoload]` singletons, `run/main_scene`, and any other setting holding a `res://` path. |
+| `graphify/extractors/godot_paths.py` | `res://` resolution, shared by the four. |
 
-Two decisions carry the result:
+Four decisions carry the result:
 
 - **`class_name` is a project-global name in Godot**, so a declaration's node id is
   global too, and another file's `extends` lands on that exact id with no
@@ -40,14 +41,25 @@ Two decisions carry the result:
   node of its own the edge is a dangling reference `build_from_json` prunes
   (upstream #1327), which is how a script's whole dependency on its shaders
   disappears.
+- **A signal connection becomes an edge only once the handler is found.**
+  `[connection … to="." method="_on_x"]` names a method but not the file that
+  declares it, so the extractor resolves the node's script through the scene tree
+  and reads it to confirm the `func` is there. A handler inherited from a base
+  script, or belonging to an instanced sub-scene, yields no edge rather than a
+  node attributed to a file that never declares it.
+- **`project.godot` is read for every `res://` value, not for a list of known
+  keys.** `[autoload]` and `run/main_scene` are the two that matter — an autoload
+  is reached by name from every script, so nothing else in the corpus points at
+  its file — but the icon, the default environment and a custom theme are
+  dependencies of the same kind, and Godot keeps adding settings of that shape.
 
-Tests: `tests/test_gdscript.py`, `tests/test_godot_shader_scene.py`, fixture Godot
-project under `tests/fixtures/godot/`.
+Tests: `tests/test_gdscript.py`, `tests/test_godot_shader_scene.py`,
+`tests/test_godot_project.py`, fixture Godot project under `tests/fixtures/godot/`.
 
 ## Updating from upstream
 
-The fork is shaped so this stays cheap: 964 lines live in files that do not exist
-upstream and can never conflict, against 13 lines touching four upstream files.
+The fork is shaped so this stays cheap: 1329 lines live in files that do not exist
+upstream and can never conflict, against 17 lines touching four upstream files.
 
 ```
 git fetch origin
@@ -71,7 +83,7 @@ this fork before deciding, then `uv tool install graphifyy --force`.
 upstream rewrites whenever it adds a language of its own:
 
 - `graphify/detect.py` — `CODE_EXTENSIONS`: keep their new list, put
-  `'.gd', '.gdshader', '.gdshaderinc', '.tscn', '.tres'` back into it.
+  `'.gd', '.gdshader', '.gdshaderinc', '.tscn', '.tres', '.godot'` back into it.
 - `README.md` — the extensions table row: same, and bump the grammar count.
 
 `graphify/extract.py` and `pyproject.toml` add whole lines in sorted blocks, so
@@ -80,7 +92,8 @@ they usually rebase clean.
 **Then prove it still works**, in this order:
 
 ```
-uv run pytest tests/test_gdscript.py tests/test_godot_shader_scene.py -q   # 31 tests
+uv run pytest tests/test_gdscript.py tests/test_godot_shader_scene.py \
+               tests/test_godot_project.py -q                              # 47 tests
 uv run pytest tests/ -q                                                    # compare failures against origin/v8, not against zero
 ```
 

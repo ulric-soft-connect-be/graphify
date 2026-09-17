@@ -26,3 +26,11 @@ func _advance(d: float) -> void:
 	var clamped := maxf(d, 0.0)
 	shared_helper()
 	print(clamped)
+
+
+func _on_button_pressed() -> void:
+	_advance(0.0)
+
+
+func _on_data_renamed() -> void:
+	pass
