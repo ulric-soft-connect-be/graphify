@@ -111,26 +111,19 @@ def extract_gdscript(path: Path) -> dict:
     function_bodies: list[tuple[str, Any]] = []
     signal_ids: dict[str, str] = {}
 
-    def add_node(nid: str, label: str, line: int | None, declared: bool = True) -> None:
-        """Add a node; a later declaration fills in a placeholder's location.
-
-        ``declared`` is False for a name this file only refers to (a base class
-        from the engine, a global class declared in another file). Those carry no
-        source_file, so whichever file really declares the name can claim it.
-        """
+    def add_node(nid: str, label: str, line: int | None) -> dict:
+        """Add a node declared in this file, or return the one already added."""
         existing = node_by_id.get(nid)
-        if existing is None:
-            entry = {
-                "id": nid, "label": label, "file_type": "code",
-                "source_file": str_path if declared else "",
-                "source_location": f"L{line}" if (declared and line) else "",
-            }
-            nodes.append(entry)
-            node_by_id[nid] = entry
-            return
-        if declared and not existing.get("source_file"):
-            existing["source_file"] = str_path
-            existing["source_location"] = f"L{line}" if line else ""
+        if existing is not None:
+            return existing
+        entry = {
+            "id": nid, "label": label, "file_type": "code",
+            "source_file": str_path,
+            "source_location": f"L{line}" if line else "",
+        }
+        nodes.append(entry)
+        node_by_id[nid] = entry
+        return entry
 
     def add_edge(src: str, tgt: str, relation: str, line: int,
                  confidence: str = "EXTRACTED", weight: float = 1.0,
@@ -178,8 +171,8 @@ def extract_gdscript(path: Path) -> dict:
         return tgt_nid
 
     # ── `class_name X` makes X a project-global name in Godot, so its node id is
-    # global too: `extends X` in any other file lands on this exact id with no
-    # cross-file resolution pass to run.
+    # global too, and is marked as such: the legacy-id heuristic would otherwise
+    # read `hud` (class Hud in hud.gd) as an old bare-filename-stem id.
     class_nid: str | None = None
     class_line = 1
     for child in root.children:
@@ -189,7 +182,8 @@ def extract_gdscript(path: Path) -> dict:
                 class_name = _read_text(name_node, source)
                 class_line = child.start_point[0] + 1
                 class_nid = _make_id(class_name)
-                add_node(class_nid, class_name, class_line)
+                class_node = add_node(class_nid, class_name, class_line)
+                class_node["metadata"] = {"godot_kind": "class_name"}
                 add_edge(file_nid, class_nid, "contains", class_line)
             break
 
@@ -197,15 +191,23 @@ def extract_gdscript(path: Path) -> dict:
     # class_name is its own anonymous class, and the file stands in for it.
     owner_nid = class_nid or file_nid
 
-    def _extends(node, subject_nid: str) -> None:
-        """Emit inherits for an extends_statement (`extends Node3D` or a res:// path)."""
+    def _extends(node, subject_nid: str, subject: dict | None) -> None:
+        """Record what an extends_statement names (`extends Node3D` or a res:// path).
+
+        A base named by type gets no node and no edge here. It is either an engine
+        class, which exists nowhere in the corpus, or a `class_name` declared in
+        another file, and this file cannot tell which. A node minted for it would
+        be a phantom in the first case, and in the second it collides with the real
+        declaration, which the id-collision pass then salts away from its global
+        id. The name is kept on the subclass instead (``metadata.godot_extends``),
+        and the cross-file pass (``gdscript_resolution``) emits the ``inherits``
+        edge once it knows the base is a project class.
+        """
         line = node.start_point[0] + 1
         for child in node.children:
             if child.type == "type":
-                base_name = _read_text(child, source)
-                base_nid = _make_id(base_name)
-                add_node(base_nid, base_name, None, declared=False)
-                add_edge(subject_nid, base_nid, "inherits", line)
+                if subject is not None:
+                    subject.setdefault("metadata", {})["godot_extends"] = _read_text(child, source)
                 return
             if child.type == "string":
                 raw = _string_literal(child, source)
@@ -219,7 +221,7 @@ def extract_gdscript(path: Path) -> dict:
         t = node.type
 
         if t == "extends_statement":
-            _extends(node, owner)
+            _extends(node, owner, node_by_id.get(owner))
             return
 
         if t == "class_definition":
@@ -230,11 +232,11 @@ def extract_gdscript(path: Path) -> dict:
             line = node.start_point[0] + 1
             # An inner class is scoped to its file, unlike a class_name.
             inner_nid = _make_id(stem, inner_name)
-            add_node(inner_nid, inner_name, line)
+            inner_node = add_node(inner_nid, inner_name, line)
             add_edge(owner, inner_nid, "contains", line)
             extends_node = node.child_by_field_name("extends")
             if extends_node is not None:
-                _extends(extends_node, inner_nid)
+                _extends(extends_node, inner_nid, inner_node)
             body = node.child_by_field_name("body")
             if body is not None:
                 for child in body.children:

@@ -49,6 +49,7 @@ from graphify.extractors.elixir import extract_elixir  # noqa: F401
 from graphify.extractors.erlang import extract_erlang, resolve_erlang_remote_calls  # noqa: F401
 from graphify.extractors.fortran import _cpp_preprocess, extract_fortran  # noqa: F401
 from graphify.extractors.gdscript import extract_gdscript  # noqa: F401
+from graphify.extractors.gdscript_resolution import resolve_gdscript  # noqa: F401
 from graphify.extractors.gdshader import extract_gdshader  # noqa: F401
 from graphify.extractors.go import _GO_PREDECLARED_FUNCS, extract_go  # noqa: F401
 from graphify.extractors.godot_project import extract_godot_project  # noqa: F401
@@ -5686,6 +5687,11 @@ register_language_resolver(
     LanguageResolver(
         "markdown_mentions", MARKDOWN_MENTION_SUFFIXES, resolve_markdown_mentions
     )
+)
+# GDScript: typed member calls, type references and code-wired signals through a
+# `class_name`, an autoload or a typed variable (graphify.extractors.gdscript_resolution).
+register_language_resolver(
+    LanguageResolver("gdscript_cross_file", frozenset({".gd"}), resolve_gdscript)
 )
 
 

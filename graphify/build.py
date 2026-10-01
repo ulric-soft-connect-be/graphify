@@ -781,6 +781,9 @@ def _has_global_id(node: dict) -> bool:
     meta = node.get("metadata")
     if not isinstance(meta, dict):
         return False
+    # A Godot `class_name` is project-global, and so is its id (`hud` for Hud).
+    if meta.get("godot_kind") == "class_name":
+        return True
     return meta.get("mcp_kind") in _MCP_GLOBAL_ID_KINDS
 
 

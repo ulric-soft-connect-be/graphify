@@ -54,20 +54,29 @@ def test_gdscript_finds_inner_class_and_its_method():
     assert ".record()" in labels
 
 
-def test_gdscript_extends_is_an_inherits_edge():
+def test_extends_by_name_is_recorded_not_materialized():
+    """A base named by type is an engine class or another file's class_name, and
+    one file cannot tell which. It is kept on the subclass for the cross-file
+    pass (tests/test_gdscript_resolution.py), and no node is minted for it: a
+    phantom in the first case, a collision that salts the real class's global id
+    in the second."""
     r = extract_gdscript(PLAYER)
-    assert "inherits" in _relations(r)
-    assert "FixtureBase" in _targets(r, "inherits")
+    player = next(n for n in r["nodes"] if n["label"] == "FixturePlayer")
+    assert player["metadata"]["godot_extends"] == "FixtureBase"
+    assert "FixtureBase" not in _labels(r)
+    tracker = next(n for n in r["nodes"] if n["label"] == "Tracker")
+    assert tracker["metadata"]["godot_extends"] == "RefCounted"
+    assert "RefCounted" not in _labels(r)
+    assert "inherits" not in _relations(r)
 
 
 def test_class_name_node_id_is_global():
-    """`class_name` registers a project-global name, so the id a declaration
-    produces is the one another file's `extends` points at — no resolution pass."""
+    """`class_name` registers a project-global name: the declaration's id is the
+    bare name, and the node says so for the legacy-id heuristic (#1504)."""
     declared = extract_gdscript(GODOT / "scripts" / "base.gd")
-    referring = extract_gdscript(PLAYER)
-    declared_id = next(n["id"] for n in declared["nodes"] if n["label"] == "FixtureBase")
-    referenced = {e["target"] for e in referring["edges"] if e["relation"] == "inherits"}
-    assert declared_id in referenced
+    base = next(n for n in declared["nodes"] if n["label"] == "FixtureBase")
+    assert base["id"] == "fixturebase"
+    assert base["metadata"]["godot_kind"] == "class_name"
 
 
 def test_preload_and_resource_path_are_imports():
