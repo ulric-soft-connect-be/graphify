@@ -15,7 +15,7 @@ out of 67 on one add-on, 0 of 225 on a full project.
 uv tool install --from git+https://github.com/ulric-soft-connect-be/graphify graphifyy --force
 ```
 
-Or from a local clone: `uv tool install --from ~/Documents/GitHub/graphify graphifyy --force`.
+Or from a local clone: `uv tool install --from ~/___Projects___/graphify graphifyy --force`.
 
 Check it took: `graphify --version`, then in any Godot project
 `graphify extract . --code-only` — the line it prints must say `found N code`
@@ -54,33 +54,43 @@ Four decisions carry the result:
   dependencies of the same kind, and Godot keeps adding settings of that shape.
 
 Tests: `tests/test_gdscript.py`, `tests/test_godot_shader_scene.py`,
-`tests/test_godot_project.py`, fixture Godot project under `tests/fixtures/godot/`.
+`tests/test_godot_project.py`, `tests/test_godot_stem_collision.py`, fixture Godot
+project under `tests/fixtures/godot/`.
 
-Measured on a 23-project Godot corpus (9593 nodes, 16861 edges): its 24
-`[connection]` sections produce 19 edges, and the five that produce none are
+Measured on a 24-project Godot corpus (10013 nodes, 18645 edges, upstream 0.9.73):
+its 24 `[connection]` sections produce 19 edges, and the five that produce none are
 accounted for — three are duplicates (one handler, one signal, several emitters,
 collapsed on purpose) and two point at a built-in method on a node carrying no
-script. Alongside them, 15 autoloads and 9 `run/main_scene` entry points, none of
+script. Alongside them, 15 autoloads and 12 `run/main_scene` entry points, none of
 which any file in those projects references by path.
 
-## A scene and its script sharing a name lose their edge
+## A scene and its script sharing a name
 
-Godot's own idiom — `player.tscn` beside `player.gd` — costs the pair its link.
-graphify derives a node id from the file path with the extension dropped, so two
-files that differ only by extension collapse onto one id, and `build_from_json`
-then drops the edges between them as self-edges. The scene keeps every other
-`[ext_resource]` edge and loses exactly the one naming the script that drives it,
-along with any `[connection]` edge into that script's methods.
+Godot's own idiom — `player.tscn` beside `player.gd` — puts two files on one id:
+graphify derives a node id from the file path with the extension dropped, and
+`_disambiguate_colliding_node_ids` then salts the pair apart by path
+(`player_tscn_player`, `player_gd_player`). An edge *into* the pair still names the
+bare `player`, so on its own it either becomes a self-loop (the scene naming its
+own script, which `build_from_json` drops) or stays on the dead shared id — which
+since upstream 0.9.63 (#2873) is minted as an `external` stub, a phantom standing
+for a file that sits in the project.
 
-This predates the fork: a graph built before these extractors carries the same
-composite id and the same missing edge. It lives in the id-remap post-pass, not
-in the Godot extractors, and it is not Godot-specific — `foo.ts` beside `foo.tsx`
-collides the same way — so fixing it is a separate contribution. On the corpus
-above, 19 scene/script pairs are affected.
+Every `imports_from` edge the Godot extractors emit therefore carries the resolved
+file as `target_file`, the hint that pass already reads for `foo.ts` beside
+`foo.mjs` (#1814) and pops before anything is written. On the corpus above that is
+193 edges — 95 from a scene to its own same-stem script, 98 into a colliding pair
+from elsewhere — that were otherwise dropped or sent to a phantom.
+
+One case stays open: `extends "res://enemy.gd"` is an `inherits` edge, and the
+pass reads `target_file` only for `imports`, `imports_from` and `re_exports`. The
+`imports_from` edge emitted alongside it does land; the `inherits` one, when
+`enemy.tscn` also exists, does not. Fixing that means widening upstream's relation
+list, and the corpus holds three path-based `extends`, none of them on a colliding
+pair, so it is left alone.
 
 ## Updating from upstream
 
-The fork is shaped so this stays cheap: 1329 lines live in files that do not exist
+The fork is shaped so this stays cheap: 1476 lines live in files that do not exist
 upstream and can never conflict, against 17 lines touching four upstream files.
 
 ```
@@ -89,10 +99,15 @@ git log --oneline HEAD..origin/v8        # what moved; empty means nothing to do
 git rebase origin/v8
 ```
 
+If `git fetch` dies on `bad object refs/remotes/fork/gdscript-extractor 2`, a
+file-sync or Finder copy duplicated a ref inside `.git` — the name with a space is
+never one git writes. Delete that one file (`rm ".git/refs/remotes/fork/gdscript-extractor 2"`)
+and fetch again.
+
 **First, check whether the fork is still needed.** If upstream merged Godot
-support (issues #535, #697, #699, #2152 and PRs #1836, #1929, #1242 are all open
-as of 2026-09-11), this fork is finished — reinstall the published package
-instead:
+support (issues #535, #697, #699, #2152 and PRs #1929, #1242, #3750 are all open
+as of 2026-10-01; #1836 was closed unmerged), this fork is finished — reinstall
+the published package instead:
 
 ```
 git show origin/v8:graphify/extract.py | grep -c '"\.gd":'
@@ -115,11 +130,16 @@ they usually rebase clean.
 
 ```
 uv run pytest tests/test_gdscript.py tests/test_godot_shader_scene.py \
-               tests/test_godot_project.py -q                              # 47 tests
+               tests/test_godot_project.py tests/test_godot_stem_collision.py -q   # 54 tests
 uv run pytest tests/ -q                                                    # compare failures against origin/v8, not against zero
 ```
 
-The full suite is not green on a bare checkout — optional extras (terraform, dm,
-ocaml, the `build` module) are not installed by a plain `uv sync`, and they fail
-identically before and after this branch. What matters is that the *same* tests
-fail on `origin/v8` and on the rebased branch, so measure both.
+The full suite is not green on a bare checkout — tests for optional extras a
+plain `uv sync` does not install fail identically before and after this branch
+(as of 0.9.73: 25 tests across erlang, r, solidity, vbnet and ollama-retry). What
+matters is that the *same* tests fail on `origin/v8` and on the rebased branch, so
+measure both.
+
+`uv sync` rewrites `uv.lock` to add `tree-sitter-gdscript`. Leave that out of the
+commits (`git checkout uv.lock` after testing): `uv tool install` does not read the
+lockfile, and a committed one would conflict on every upstream release.
