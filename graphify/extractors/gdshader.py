@@ -114,25 +114,31 @@ def extract_gdshader(path: Path) -> dict:
         node_by_id[nid] = entry
 
     def add_edge(src_id: str, tgt_id: str, relation: str, line: int,
-                 context: str | None = None) -> None:
+                 context: str | None = None,
+                 target_file: str | None = None) -> None:
         edge = {"source": src_id, "target": tgt_id, "relation": relation,
                 "confidence": "EXTRACTED", "source_file": str_path,
                 "source_location": f"L{line}", "weight": 1.0}
         if context:
             edge["context"] = context
+        if target_file:
+            edge["target_file"] = target_file
         edges.append(edge)
 
     file_nid = _make_id(str_path)
     add_node(file_nid, path.name, 1)
 
-    # ── #include is the whole dependency structure of a shader tree.
+    # ── #include is the whole dependency structure of a shader tree. `water.gdshader`
+    # including `water.gdshaderinc` is two files on one id until the collision pass
+    # salts them apart; target_file says which one the edge means (#1814).
     for m in _INCLUDE_RE.finditer(src):
         target = resolve_res_path(m.group(1), path)
         if target is None:
             continue
         tgt_nid = _make_id(str(target))
         add_node(tgt_nid, target.name, None, source_file=str(target))
-        add_edge(file_nid, tgt_nid, "imports_from", line_at(m.start()), context="include")
+        add_edge(file_nid, tgt_nid, "imports_from", line_at(m.start()), context="include",
+                 target_file=str(target))
 
     # ── Functions, and the calls inside each one.
     functions: list[tuple[str, int, int]] = []   # nid, body start, body end

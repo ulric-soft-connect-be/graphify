@@ -130,6 +130,11 @@ def extract_godot_resource(path: Path) -> dict:
             "confidence": "EXTRACTED", "source_file": str_path,
             "source_location": f"L{lineno}", "weight": 1.0,
             "context": (attrs.get("type") or "ext_resource").lower(),
+            # `enemy.tscn` driven by `enemy.gd` is two files on one id until the
+            # collision pass salts them apart; without the resolved file to key on,
+            # the edge to the script becomes a self-loop and the edge from any
+            # other scene stays on the dead shared id (#1814).
+            "target_file": str(target),
         })
 
     # ── [node]: which script drives each node of the tree ──

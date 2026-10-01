@@ -134,12 +134,15 @@ def extract_gdscript(path: Path) -> dict:
 
     def add_edge(src: str, tgt: str, relation: str, line: int,
                  confidence: str = "EXTRACTED", weight: float = 1.0,
-                 context: str | None = None) -> None:
+                 context: str | None = None,
+                 target_file: str | None = None) -> None:
         edge = {"source": src, "target": tgt, "relation": relation,
                 "confidence": confidence, "source_file": str_path,
                 "source_location": f"L{line}", "weight": weight}
         if context:
             edge["context"] = context
+        if target_file:
+            edge["target_file"] = target_file
         edges.append(edge)
 
     file_nid = _make_id(str(path))
@@ -155,6 +158,11 @@ def extract_gdscript(path: Path) -> dict:
         disappears. The node carries the target's own path, so when the target IS
         extracted (one .gd preloading another) both sides produce the same id and
         the two descriptions are one node.
+
+        ``target_file`` tells the id-collision pass which file the edge means: an
+        id drops the extension, so ``enemy.tscn`` and ``enemy.gd`` share one until
+        that pass salts them apart, and without the hint the edge stays on the
+        dead shared id (#1814).
         """
         target = resolve_res_path(raw, path)
         if target is None:
@@ -165,7 +173,8 @@ def extract_gdscript(path: Path) -> dict:
                      "source_file": str(target), "source_location": ""}
             nodes.append(entry)
             node_by_id[tgt_nid] = entry
-        add_edge(file_nid, tgt_nid, "imports_from", line, context=context)
+        add_edge(file_nid, tgt_nid, "imports_from", line, context=context,
+                 target_file=str(target))
         return tgt_nid
 
     # ── `class_name X` makes X a project-global name in Godot, so its node id is

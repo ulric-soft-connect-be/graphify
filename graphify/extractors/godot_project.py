@@ -80,6 +80,9 @@ def extract_godot_project(path: Path) -> dict:
             # In [autoload] the key IS the global name scripts use, so it is the
             # part of the setting worth carrying into the graph.
             "context": f"autoload:{key}" if section == "autoload" else key,
+            # `main.tscn` beside `main.gd` share an id until the collision pass
+            # salts them apart; this says which one the setting names (#1814).
+            "target_file": str(target),
         })
 
     return {"nodes": nodes, "edges": edges}
